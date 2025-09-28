@@ -45,6 +45,30 @@ function printMixture(gmb::GaussianMixtureBelief; step::Int)
     println()               # blank line for readability
 end
 
+# ---------- helpers for adaptive growth -------------------------------
+
+"Mahalanobis innovation – crude non-linearity score"
+nonlinScore(comp::FullNormal, o, 𝒫::POMDPscenario) =
+    let H = I(2),           # identity for simple range sensors
+        S = H*comp.Σ*H' + 𝒫.Σv,
+        y = o - H*comp.μ
+    y' * inv(S) * y          # χ² distance
+    end
+
+"Split a component into two along its strongest axis"
+function splitComponent(comp::FullNormal; c=0.6)
+    λ, V = eigen(comp.Σ)
+    δx   = c*sqrt(λ[1])*V[:,1]  # major axis
+    δy   = c*sqrt(λ[2])*V[:,2]  # minor axis
+
+    parts  = [MvNormal(comp.μ + δx, comp.Σ/4),
+              MvNormal(comp.μ - δx, comp.Σ/4),
+              MvNormal(comp.μ + δy, comp.Σ/4),
+              MvNormal(comp.μ - δy, comp.Σ/4)]
+    return parts, fill(0.25, 4)
+end
+
+
 
 function GetInitialGMBelief(μ0, Σ0; num_components::Int = 1, split_strategy::String = "sigma_points")
     if num_components == 1
@@ -338,27 +362,46 @@ function CalculateDeadReckoningBeliefGMF(𝒫::POMDPscenario, b0GMF::GaussianMix
     return τbdr
 end
 
-function CalculatePosteriorBeliefGMF(𝒫::POMDPscenario, b0GMF::GaussianMixtureBelief, ak_array, T, τobs)
-    τb = Array{GaussianMixtureBelief}(undef, T)
+function CalculatePosteriorBeliefGMF(𝒫::POMDPscenario, b0GMF::GaussianMixtureBelief,
+                                     ak, T, τobs)
+
+    τb = Vector{GaussianMixtureBelief}(undef, T)
     τb[1] = b0GMF
-    
+
+    εsplit   = 10.0          # non-linearity threshold
+    Nmax     = 8           # max components after merge
+    wprune   = 1e-3         # prune threshold
+
     for t in 2:T
-        if τobs[t] === nothing
-            # No observation available, just propagate
-            τb[t] = PropagateBelief(τb[t-1], 𝒫, ak_array[t-1])
-        else
-            # Use observation for update
-            obs_corrected = τobs[t].obs .+ 𝒫.beacons[τobs[t].index,:]  # Same correction as in Gaussian belief
-            τb[t] = PropagateUpdateBelief(τb[t-1], 𝒫, ak_array[t-1], obs_corrected)
+        # ---------------- growth (splitting) --------------------------
+        gmb_grow = GaussianMixtureBelief([], Float64[])
+        for (comp,w) in zip(τb[t-1].components, τb[t-1].weights)
+            if (τobs[t] !== nothing) && (nonlinScore(comp, τobs[t].obs, 𝒫) > εsplit)
+                parts, loc_w = splitComponent(comp)
+                append!(gmb_grow.components, parts)
+                append!(gmb_grow.weights,    w .* loc_w)
+            else
+                push!(gmb_grow.components, comp)
+                push!(gmb_grow.weights,    w)
+            end
         end
-        
-        # Apply pruning and merging to manage complexity
-        τb[t] = PruneComponents(τb[t])
-        τb[t] = MergeComponents(τb[t], max_components=8)
-        
-        printMixture(τb[t]; step=t)
+        gmb_grow.weights ./= sum(gmb_grow.weights)   # normalise
+
+        # -------------- predict & (optional) update -------------------
+        if τobs[t] === nothing
+            gmb_pred = PropagateBelief(gmb_grow, 𝒫, ak[t-1])
+            gmb_upd  = gmb_pred                         # no observation
+        else
+            obs_corr = τobs[t].obs .+ 𝒫.beacons[τobs[t].index,:]
+            gmb_upd  = PropagateUpdateBelief(gmb_grow, 𝒫, ak[t-1], obs_corr)
+        end
+
+        # -------------- prune & merge (shrink) ------------------------
+        gmb_upd  = PruneComponents(gmb_upd;  threshold = wprune)
+        gmb_upd  = MergeComponents(gmb_upd; max_components = Nmax)
+
+        τb[t] = gmb_upd
     end
-    
     return τb
 end
 

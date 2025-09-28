@@ -47,7 +47,7 @@ function main()
     b0GMF = GetInitialGMBelief(μ0, Σ0, num_components=5)
 
     # Initialize Step count
-    T = 6 
+    T = 7 
     ExecuteQLogic(𝒫, b0G, b0P, b0GMF, T)
 
     # BenchmarkResampling()
