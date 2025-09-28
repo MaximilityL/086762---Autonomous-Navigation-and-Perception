@@ -11,6 +11,7 @@ using BenchmarkTools
 includet("Utils/drawCovarianceEllipse.jl") 
 includet("Utils/GBFunctions.jl")
 includet("Utils/PFFunctions.jl")
+includet("Utils/GMFFunctions.jl")
 includet("Utils/HelperFunctions.jl")
 
 @with_kw mutable struct POMDPscenario
@@ -31,7 +32,10 @@ end
 
 
 function main()
-
+    if !isdir("Results")
+        mkdir("Results")
+    end
+    
     𝒫 = InitiatePOMDPScenario()
 
     # Initialize Belief
@@ -40,12 +44,13 @@ function main()
 
     b0P = GetInitialParticleBelief(μ0, Σ0)
     b0G = GetInitialGaussianBelief(μ0, Σ0)
+    b0GMF = GetInitialGMBelief(μ0, Σ0, num_components=5)
 
     # Initialize Step count
     T = 6 
-    ExecuteQLogic(𝒫, b0G, b0P, T)
+    ExecuteQLogic(𝒫, b0G, b0P, b0GMF, T)
 
-    BenchmarkResampling()
+    # BenchmarkResampling()
 
 end 
 

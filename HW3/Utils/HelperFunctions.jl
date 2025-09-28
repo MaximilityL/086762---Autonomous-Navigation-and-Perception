@@ -18,7 +18,7 @@ function InitiatePOMDPScenario()
     # definition of the random number generator with seed 
     rng = MersenneTwister(1)
     
-    d =1.0 
+    d =2.0 
     rmin = 0.1
     # set beacons locations 
     beacons =  [0.0 0.0; 0.0 4.0; 0.0 8.0; 4.0 0.0; 4.0 4.0; 4.0 8.0; 8.0 0.0; 8.0 4.0; 8.0 8.0]
@@ -248,7 +248,13 @@ function printQfClauseVPlots(𝒫::POMDPscenario, τ, τbPwr, τbB, T)
     ScatterPlotCombinedBelief(𝒫, τ, τbPwr, τbB, T, "Results/QfV-PosteriorGaussianAndParticleBeliefResampleTrajectory.pdf"; useLegend = false)
 end
 
-function ExecuteQLogic(𝒫::POMDPscenario, b0G::FullNormal, b0P::ParticleBelief, T)
+function ExecuteQLogic(𝒫::POMDPscenario, b0G::FullNormal, b0P::ParticleBelief, b0GMF::GaussianMixtureBelief, T)
+    # Create Results directory using absolute path
+    resultsPath = joinpath(dirname(@__FILE__), "..", "Results")
+    if !isdir(resultsPath)
+        mkpath(resultsPath)
+    end
+    
     ## Initialization of Question f
     # Defining Question Data
     xgt0 = [-0.5, -0.2]           
@@ -260,46 +266,73 @@ function ExecuteQLogic(𝒫::POMDPscenario, b0G::FullNormal, b0P::ParticleBelief
 
 
     ## Generating Motion trajectory - Clause i
+    println("\n[ExecuteQLogic] Calculating Motion Trajectory...")
     τ = CalculateMotionTrajectory(𝒫, ak, T, τ0)
+    println("[ExecuteQLogic] Motion Trajectory calculation completed.")
 
-
-    ## Generationg Observation Trajectory - Clause ii
+    ## Generating Observation Trajectory - Clause ii
+    println("\n[ExecuteQLogic] Calculating Observation Trajectory...")
     τobsbeacons = CalculateObservationTrajectory(𝒫, τ, T, τobsbeacons0)      
+    println("[ExecuteQLogic] Observation Trajectory calculation completed.")
+    println("[ExecuteQLogic] Observation trajectory:", τobsbeacons)
+
+    # ## Dead Reckoning Belief Calculation - Guassian & Particle Belief - Clause iii
+    # # Dead Reckoning Particle Belief Calculation
+    # println("\n[ExecuteQLogic] Calculating Dead Reckoning Particle Belief...")
+    # τbdrP = CalculateDeadReckoningBelief(𝒫, b0P, ak, T)
+    # println("[ExecuteQLogic] Dead Reckoning Particle Belief calculation completed.")
+
+    # # Dead Reckoning Gaussian Belief Calculation
+    # println("\n[ExecuteQLogic] Calculating Dead Reckoning Gaussian Belief...")
+    # τbdrG = CalculateDeadReckoningBelief(𝒫, b0G, ak, T)
+    # println("[ExecuteQLogic] Dead Reckoning Gaussian Belief calculation completed.")
+
+    # # Print The required plots for clause iii
+    # printQfClauseiiiPlots(𝒫, τ, τbdrP, τbdrG, T)
+
+    # ## Posterior Calculation (Using Observation Data) - Partile Filter and Guassian Belief - Clause iV and V
+    # # Particle Filter Posterior Belief Calculation - Without Resampling
+    # println("\n[ExecuteQLogic] Calculating Posterior Belief without resampling...")
+    # τbPwor = CalculatePosteriorBelief(𝒫, b0P, ak, T, τobsbeacons; useResampling = false)
+    # println("[ExecuteQLogic] Posterior Belief without resampling calculation completed.")
+
+    # # Particle Filter Posterior Belief Calculation - With Resampling
+    # println("\n[ExecuteQLogic] Calculating Posterior Belief with resampling...")
+    # τbPwr = CalculatePosteriorBelief(𝒫, b0P, ak, T, τobsbeacons; useResampling = true)
+    # println("[ExecuteQLogic] Posterior Belief with resampling calculation completed.")
     
-    println(τobsbeacons)
+    # # Gaussian Posterior Belief Calculation
+    # τbB = CalculatePosteriorBelief(𝒫, b0G, ak, T, τobsbeacons)
 
+    # # Print the required plot for clause iV
+    # printQfClauseiVPlots(𝒫, τ, τbPwor, τbB, T)
 
-    ## Dead Reckoning Belief Calculation - Guassian & Particle Belief - Clause iii
-    # Dead Reckoning Particle Belief Calculation
-    τbdrP = CalculateDeadReckoningBelief(𝒫, b0P, ak, T)
+    # # Print the required plot for clause V
+    # printQfClauseVPlots(𝒫, τ, τbPwr, τbB, T)
 
-    # Dead Reckoning Gaussian Belief Calculation
-    τbdrG = CalculateDeadReckoningBelief(𝒫, b0G, ak, T)
+    # ## Posterior Calculation (Using Observation Data) - Particle Filter With LowVarianceResampling
+    # println("\n[ExecuteQLogic] Calculating Posterior Belief with low variance resampling...")
+    # τbPwrLV = CalculatePosteriorBelief(𝒫, b0P, ak, T, τobsbeacons; useResampling = true, useLowVarianceResampling = true)
+    # println("[ExecuteQLogic] Posterior Belief with low variance resampling calculation completed.")
 
-    # Print The required plots for clause iii
-    printQfClauseiiiPlots(𝒫, τ, τbdrP, τbdrG, T)
+    # #Plot the Guassian and Particle Belief
+    # ScatterPlotCombinedBelief(𝒫, τ, τbPwrLV, τbB, T, "Results/Qg-PosteriorGaussianAndParticleBeliefLowVarianceResampleTrajectory.pdf"; useLegend = false)
 
-    ## Posterior Calculation (Using Observation Data) - Partile Filter and Guassian Belief - Clause iV and V
-    # Partical Filter Posterior Belief Calculation - Without Resampling
-    τbPwor = CalculatePosteriorBelief(𝒫, b0P, ak, T, τobsbeacons; useResampling = false)
-    # Partical Filter Posterior Belief Calculation - With Resampling
-    τbPwr = CalculatePosteriorBelief(𝒫, b0P, ak, T, τobsbeacons; useResampling = true)
+    ###### GMF UPDATES (NEW SECTION) ######
+    println("GMF Dead Reckoning...")
+    # FIX: Convert single action to array for multiple time steps
+    ak_array = [ak for _ in 1:T-1]  # Create array of actions
+    τbdrGMF = CalculateDeadReckoningBeliefGMF(𝒫, b0GMF, ak_array, T)
     
-    # Gaussian Posterior Belief Calculation
-    τbB = CalculatePosteriorBelief(𝒫, b0G, ak, T, τobsbeacons)
+    println("GMF Posterior...")
+    τbGMF = CalculatePosteriorBeliefGMF(𝒫, b0GMF, ak_array, T, τobsbeacons)
 
-    # Print the required plot for clause iV
-    printQfClauseiVPlots(𝒫, τ, τbPwor, τbB, T)
-
-    # Print the required plot for clause V
-    printQfClauseVPlots(𝒫, τ, τbPwr, τbB, T)
-
-    ## Posterior Calculation (Using Observation Data) - Partile Filter With LowVarianceResampling
-    τbPwrLV = CalculatePosteriorBelief(𝒫, b0P, ak, T, τobsbeacons; useResampling = true, useLowVarianceResampling = true)
-
-    #Plot the Guassian and Particle Belief
-    ScatterPlotCombinedBelief(𝒫, τ, τbPwrLV, τbB, T, "Results/Qg-PosteriorGaussianAndParticleBeliefLowVarianceResampleTrajectory.pdf"; useLegend = false)
-
+    ###### PLOTTING ######
+    println("Plotting GMF Results...")
+    PlotGMFResults(𝒫, τ, τbGMF)
+    
+    # FIX: Use correct variable names
+    # PrintFilterComparison(τ, τbB, τbPwr, τbGMF, T)  # Changed τbG to τbB, τbP to τbPwr
 end
 
 function BenchmarkResampling()
